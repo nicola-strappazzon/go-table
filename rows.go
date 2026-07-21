@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	"reflect"
@@ -8,16 +8,16 @@ import (
 type Rows []Row
 
 func (r *Rows) Remove(i int) {
-	if len((*r)) > i {
+	if r.Len() > i {
 		(*r) = append((*r)[:i], (*r)[i+1:]...)
 	}
 }
 
 func (r *Rows) SortBy(i int) {
 	sort.Slice((*r), func(x, y int) bool {
-		t := reflect.TypeOf((*r)[x][i].Value)
-		v1 := reflect.ValueOf((*r)[x][i].Value)
-		v2 := reflect.ValueOf((*r)[y][i].Value)
+		t := reflect.TypeOf((*r)[x].Fields[i].Value)
+		v1 := reflect.ValueOf((*r)[x].Fields[i].Value)
+		v2 := reflect.ValueOf((*r)[y].Fields[i].Value)
 
 		switch t.Name() {
 		case "int":
@@ -34,4 +34,26 @@ func (r *Rows) SortBy(i int) {
 			return false // return unmodified
 		}
 	})
+}
+
+func (r Rows) Len() int {
+	return len(r)
+}
+
+func (r Rows) First() Row {
+	if r.IsEmpty() {
+		return Row{}
+	}
+	return r[0]
+}
+
+func (r Rows) Last() Row {
+	if r.IsEmpty() {
+		return Row{}
+	}
+	return r[r.Len()-1]
+}
+
+func (r Rows) IsEmpty() bool {
+	return r.Len() == 0
 }
