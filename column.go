@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	"math"
@@ -6,19 +6,19 @@ import (
 	"github.com/fatih/color"
 )
 
-// Format define cómo se presenta el valor de una columna al imprimir.
+// Format defines how a column's value is presented when printed.
 type Format int
 
 const (
-	Plain      Format = iota // el valor tal cual
-	Percentage               // añade "%" al valor
-	Duration                 // interpreta el valor como segundos y lo humaniza
-	Bytes                    // interpreta el valor como bytes y lo humaniza (GiB, ...)
+	Plain      Format = iota // the value as is
+	Percentage               // appends "%" to the value
+	Duration                 // reads the value as seconds and humanizes it
+	Bytes                    // reads the value as bytes and humanizes it (GiB, ...)
 )
 
-// ColorRule pinta el valor de una celda con Color cuando el valor de la
-// columna cumple Condition (p. ej. ">= 50"). Las reglas se evalúan en orden
-// y gana la primera que se cumple.
+// ColorRule paints a cell value with Color when the column value satisfies
+// Condition (e.g. ">= 50"). Rules are evaluated in order and the first match
+// wins.
 type ColorRule struct {
 	Condition string
 	Color     color.Attribute
@@ -26,9 +26,9 @@ type ColorRule struct {
 
 type Column struct {
 	Alignment Alignment
-	Color     color.Attribute // color por defecto si no cumple ninguna regla
-	Colors    []ColorRule     // reglas condicionales, evaluadas en orden
-	Format    Format          // formato de presentación del valor
+	Color     color.Attribute // default color when no rule matches
+	Colors    []ColorRule     // conditional rules, evaluated in order
+	Format    Format          // value presentation format
 	Name      string
 	Precision int
 	Scale     int
@@ -43,4 +43,20 @@ func (c *Column) SetName(s string) {
 
 func (c Column) GetWidth() int {
 	return int(math.Max(float64(len(c.Name)), float64(c.Width)))
+}
+
+// toField builds a Field with value and the column's presentation, so the
+// table can reuse Field's format and color logic when rendering.
+func (c Column) toField(value any) Field {
+	return Field{
+		Value:     value,
+		Name:      c.Name,
+		Format:    c.Format,
+		Color:     c.Color,
+		Colors:    c.Colors,
+		Precision: c.Precision,
+		Scale:     c.Scale,
+		ZeroFill:  c.ZeroFill,
+		Alignment: c.Alignment,
+	}
 }

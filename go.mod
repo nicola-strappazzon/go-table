@@ -1,4 +1,4 @@
-module nicola-strappazzon/go-table
+module github.com/nicola-strappazzon/go-table
 
 go 1.26.5
 

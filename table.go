@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	"fmt"
@@ -42,10 +42,13 @@ type Table interface {
 	Min(int) float64
 	Padding(uint) Table
 	Print()
+	SetWidth(int) Table
 	SortBy(int) Table
 	Sum(int) float64
 	Title(string) Table
+	Total(int) Table
 	Width() int
+	Rows() Rows
 }
 
 type table struct {
@@ -60,7 +63,9 @@ type table struct {
 	sortColumn int
 	stats      map[int]Stats
 	title      string
+	totals     map[int]bool
 	width      int
+	fixedWidth int
 }
 
 func New() Table {
@@ -68,6 +73,7 @@ func New() Table {
 	t.filters = map[int]string{}
 	t.columns = map[int]Column{}
 	t.stats = map[int]Stats{}
+	t.totals = map[int]bool{}
 	t.padding = uint(2)
 	t.margin = Margin{}
 
@@ -82,7 +88,7 @@ func (t *table) Title(title string) Table {
 func (t *table) Add(vals ...any) Table {
 	row := Row{}
 	for _, val := range vals {
-		row = append(row, Field{Value: val})
+		row.Fields = append(row.Fields, Field{Value: val})
 	}
 	t.rows = append(t.rows, row)
 	t.count++
@@ -114,8 +120,14 @@ func (t *table) SortBy(index int) Table {
 	t.sortColumn = index
 	t.SetColumnName(
 		index,
-		fmt.Sprintf("%s%s", t.columns[index].Name, DOWN_ARROW))
+		fmt.Sprintf("%s%s", t.columns[index].Name, DOWN_ARROW),
+	)
 
+	return t
+}
+
+func (t *table) Total(index int) Table {
+	t.totals[index] = true
 	return t
 }
 
@@ -132,9 +144,11 @@ func (t *table) Print() {
 	t.calculateColumnStats()
 	t.calculateTableWidth()
 	t.printTitle()
+	t.printTitleSpacing()
 	t.printHeader()
 	t.sortRows()
 	t.printRows()
+	t.printFooter()
 }
 
 func (t *table) Filtered() int {
@@ -161,9 +175,47 @@ func (t *table) Width() int {
 	return t.width
 }
 
+// SetWidth forces the table width (used for the title header and the separator
+// line). Pass 0 to restore the automatic width computed from the columns.
+// Note: it does not truncate columns; if the forced width is smaller than the
+// content, rows will extend past the decorative lines.
+func (t *table) SetWidth(w int) Table {
+	t.fixedWidth = w
+	return t
+}
+
+func (t *table) Rows() Rows {
+	return t.rows
+}
+
 func (t *table) printTitle() {
+	printTitleLine(t.title, t.width)
+	printTitleSeparator(t.width)
+}
+
+func (t *table) printTitleSpacing() {
+	if t.title != "" {
+		// fmt.Println()
+	}
+}
+
+// printTitleLine prints the "─── title ───" header fitted to width. The number
+// of dashes is never negative, even when width is smaller than the title.
+func printTitleLine(title string, width int) {
+	dashes := width - utf8.RuneCountInString(title) - 4
+	if dashes < 0 {
+		dashes = 0
+	}
+
 	c := color.New(color.FgWhite, color.Bold)
-	c.Println("───", t.title, strings.Repeat("─", t.width-len(t.title)-5))
+	c.Println("━━", title, strings.Repeat("━", dashes))
+}
+
+func printTitleSeparator(width int) {
+	if width < 2 {
+		width = 2
+	}
+	color.New(color.FgWhite, color.Bold).Println(strings.Repeat(" ", 2) + strings.Repeat("─", width-2))
 }
 
 func (t *table) printHeader() {
@@ -177,6 +229,17 @@ func (t *table) printRows() {
 	for index, row := range t.rows {
 		fmt.Println(t.buildRow(index, row))
 	}
+}
+
+func (t *table) printFooter() {
+	if !t.hasTotals() {
+		return
+	}
+
+	c := color.New(color.FgWhite, color.Bold)
+	c.DisableColor()
+	c.Println(strings.Repeat(" ", t.margin.Left) + strings.Repeat("┄", t.width-t.margin.Left))
+	c.Println(t.buildFooter())
 }
 
 func (t *table) sortRows() {
@@ -195,33 +258,45 @@ func (t *table) buildHeader() (p string) {
 }
 
 func (t *table) buildRow(rowIndex int, row Row) (p string) {
-	for columnIndex, columnValue := range row {
+	for columnIndex, columnValue := range row.Fields {
 		p = p + t.buildColumn(rowIndex, columnIndex, columnValue)
 	}
-	return p
+	return strings.TrimRight(p, " ")
 }
 
-func (t *table) buildColumn(rowIndex, columnIndex int, columnValue Field) (field string) {
-	field = columnValue.ToString()
+func (t *table) buildFooter() (p string) {
+	for i := 0; i < len(t.columns); i++ {
+		p = p + t.buildFooterColumn(i)
+	}
+	return strings.TrimRight(p, " ")
+}
 
+func (t *table) buildColumn(rowIndex, columnIndex int, columnValue Field) string {
+	pf := t.columns[columnIndex].toField(columnValue.Value)
+
+	field := pf.ToString()
 	if rowIndex >= 0 {
-		switch t.columns[columnIndex].Format {
-		case Percentage:
-			field = fmt.Sprintf("%s%%", columnValue.ToString())
-		case Duration:
-			field = columnValue.ToDuration()
-		case Bytes:
-			field = columnValue.ToBytes()
-		}
+		field = pf.Render()
 	}
 
-	if rowIndex >= 0 && t.columns[columnIndex].ZeroFill == true {
-		field = columnValue.ZeroFill(
-			t.columns[columnIndex].Precision,
-			t.columns[columnIndex].Scale)
+	colored := pf.Colorize(field)
+
+	if pf.Alignment == Right {
+		return t.lenOffset(field, t.stats[columnIndex].Len) + colored + t.printPadding()
 	}
 
-	colored := t.colorize(columnIndex, columnValue, field)
+	return strings.Repeat(" ", t.margin.Left) + colored + t.lenOffset(field, t.stats[columnIndex].Len) + t.printPadding()
+}
+
+func (t *table) buildFooterColumn(columnIndex int) string {
+	field := ""
+	colored := ""
+
+	if t.totals[columnIndex] {
+		pf := t.columns[columnIndex].toField(t.stats[columnIndex].Sum)
+		field = pf.Render()
+		colored = color.New(color.FgWhite, color.Bold).Sprint(field)
+	}
 
 	if t.columns[columnIndex].Alignment == Right {
 		return t.lenOffset(field, t.stats[columnIndex].Len) + colored + t.printPadding()
@@ -230,39 +305,13 @@ func (t *table) buildColumn(rowIndex, columnIndex int, columnValue Field) (field
 	return strings.Repeat(" ", t.margin.Left) + colored + t.lenOffset(field, t.stats[columnIndex].Len) + t.printPadding()
 }
 
-// colorize pinta text con la primera ColorRule cuya condición cumpla el valor
-// de la celda; si no cumple ninguna usa Column.Color. Devuelve text sin cambios
-// cuando no hay color configurado (el ancho se calcula aparte sobre text sin
-// colorear para no romper la alineación con los códigos ANSI).
-func (t *table) colorize(columnIndex int, value Field, text string) string {
-	col := t.columns[columnIndex]
-
-	attr := col.Color
-	for _, rule := range col.Colors {
-		if value.EvalCondition(rule.Condition) {
-			attr = rule.Color
-			break
+func (t *table) hasTotals() bool {
+	for _, enabled := range t.totals {
+		if enabled {
+			return true
 		}
 	}
-
-	if attr == color.Reset {
-		return text
-	}
-
-	return color.New(attrs256(attr)...).Sprint(text)
-}
-
-func attrs256(attr color.Attribute) []color.Attribute {
-	switch attr {
-	case color.FgGreen:
-		return []color.Attribute{38, 5, 34}
-	case color.FgRed:
-		return []color.Attribute{38, 5, 203}
-	case color.FgYellow:
-		return []color.Attribute{38, 5, 208}
-	default:
-		return []color.Attribute{attr}
-	}
+	return false
 }
 
 func (t *table) resetVariables() {
@@ -272,16 +321,16 @@ func (t *table) resetVariables() {
 
 func (t *table) clearColumnsValues() {
 	for rowIndex, rowValue := range t.rows {
-		for columnIndex, _ := range rowValue {
-			(*t).rows[rowIndex][columnIndex].Clear()
-			(*t).rows[rowIndex][columnIndex].Truncate(t.columns[columnIndex].Truncate)
+		for columnIndex := range rowValue.Fields {
+			(*t).rows[rowIndex].Fields[columnIndex].Clear()
+			(*t).rows[rowIndex].Fields[columnIndex].Truncate(t.columns[columnIndex].Truncate)
 		}
 	}
 }
 
 func (t *table) filterRows() {
 	for index := len(t.rows) - 1; index >= 0; index-- {
-		for columnIndex, columnValue := range t.rows[index] {
+		for columnIndex, columnValue := range t.rows[index].Fields {
 			if condition, ok := t.filters[columnIndex]; ok {
 				if !columnValue.EvalCondition(condition) {
 					t.rows.Remove(index)
@@ -297,11 +346,11 @@ func (t *table) calculateColumnStats() {
 		var v float64
 
 		if len(t.rows) > 0 {
-			v = t.rows[0][index].ToFloat64()
+			v = t.rows[0].Fields[index].ToFloat64()
 		}
 
 		t.stats[index] = Stats{
-			Len: t.calculateColumnLen(index, value.GetWidth()),
+			Len: t.calculateColumnLen(index, t.calculateColumnBaseLen(index, value)),
 			Min: t.calculateColumnMin(index, v),
 			Max: t.calculateColumnMax(index, v),
 			Sum: t.calculateColumnSum(index),
@@ -309,9 +358,18 @@ func (t *table) calculateColumnStats() {
 	}
 }
 
+func (t *table) calculateColumnBaseLen(index int, column Column) int {
+	width := column.GetWidth()
+	if t.totals[index] {
+		total := column.toField(t.calculateColumnSum(index)).Render()
+		width = int(math.Max(float64(width), float64(utf8.RuneCountInString(total))))
+	}
+	return width
+}
+
 func (t *table) calculateColumnMin(index int, value float64) float64 {
 	for x := 1; x < len(t.rows); x++ {
-		value = math.Min(value, t.rows[x][index].ToFloat64())
+		value = math.Min(value, t.rows[x].Fields[index].ToFloat64())
 	}
 
 	return value
@@ -319,7 +377,7 @@ func (t *table) calculateColumnMin(index int, value float64) float64 {
 
 func (t *table) calculateColumnMax(index int, value float64) float64 {
 	for x := 1; x < len(t.rows); x++ {
-		value = math.Max(value, t.rows[x][index].ToFloat64())
+		value = math.Max(value, t.rows[x].Fields[index].ToFloat64())
 	}
 
 	return value
@@ -327,7 +385,7 @@ func (t *table) calculateColumnMax(index int, value float64) float64 {
 
 func (t *table) calculateColumnSum(index int) (sum float64) {
 	for x := 0; x < len(t.rows); x++ {
-		sum = sum + t.rows[x][index].ToFloat64()
+		sum = sum + t.rows[x].Fields[index].ToFloat64()
 	}
 
 	return sum
@@ -335,13 +393,18 @@ func (t *table) calculateColumnSum(index int) (sum float64) {
 
 func (t *table) calculateColumnLen(index int, value int) int {
 	for x := 0; x < len(t.rows); x++ {
-		value = int(math.Max(float64(value), float64(t.rows[x][index].Len())))
+		value = int(math.Max(float64(value), float64(t.rows[x].Fields[index].Len())))
 	}
 
 	return value
 }
 
 func (t *table) calculateTableWidth() {
+	if t.fixedWidth > 0 {
+		t.width = t.fixedWidth
+		return
+	}
+
 	for _, stats := range t.stats {
 		t.width = t.width + stats.Len + int(t.padding)
 	}

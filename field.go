@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	"fmt"
@@ -9,10 +9,23 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/fatih/color"
 )
 
+// Field is a cell value together with its presentation (label, format and
+// color). The presentation is optional: the Table fills it from its Column when
+// rendering, and a standalone Row sets it directly on each Field.
 type Field struct {
-	Value any
+	Value     any
+	Name      string          // label (used when printing a vertical Row)
+	Format    Format          // value presentation format
+	Color     color.Attribute // default color when no rule matches
+	Colors    []ColorRule     // conditional rules, evaluated in order
+	Precision int
+	Scale     int
+	ZeroFill  bool
+	Alignment Alignment
 }
 
 func (f Field) IsString() bool {
@@ -52,7 +65,7 @@ func (f *Field) Clear() {
 	}
 }
 
-func (f Field) ZeroFill(precision, scale int) string {
+func (f Field) ZeroFilled(precision, scale int) string {
 	var m float64
 	var n float64
 
@@ -72,8 +85,8 @@ func (f Field) ZeroFill(precision, scale int) string {
 		scale, n*m)
 }
 
-// ToDuration interpreta el valor de la celda como segundos y lo devuelve
-// humanizado con la unidad mayor que aplique: "45s", "3m", "1h", "17.2d".
+// ToDuration reads the cell value as seconds and returns it humanized with the
+// largest applicable unit: "45s", "3m", "1h", "17.2d".
 func (f Field) ToDuration() string {
 	s := f.ToFloat64()
 
@@ -91,8 +104,8 @@ func (f Field) ToDuration() string {
 	}
 }
 
-// ToBytes interpreta el valor de la celda como bytes y lo devuelve humanizado
-// con unidades binarias (base 1024): "512B", "64KiB", "128GiB".
+// ToBytes reads the cell value as bytes and returns it humanized with binary
+// units (base 1024): "512B", "64KiB", "128GiB".
 func (f Field) ToBytes() string {
 	b := f.ToFloat64()
 	units := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
@@ -107,16 +120,75 @@ func (f Field) ToBytes() string {
 }
 
 func (f Field) EvalCondition(condition string) bool {
+	operand := f.ToString()
+	if f.IsString() {
+		operand = strconv.Quote(operand)
+	}
+
 	fs := token.NewFileSet()
 	tv, err := types.Eval(
 		fs,
 		nil,
 		token.NoPos,
-		fmt.Sprintf("%s %s", f.ToString(), condition))
+		fmt.Sprintf("%s %s", operand, condition))
 
 	if err != nil || tv.Value == nil || tv.Value.Kind() != constant.Bool {
 		return false
 	}
 
 	return constant.BoolVal(tv.Value)
+}
+
+// Render returns the value formatted according to Format and ZeroFill, without
+// coloring or aligning.
+func (f Field) Render() string {
+	field := f.ToString()
+
+	switch f.Format {
+	case Percentage:
+		field = fmt.Sprintf("%s%%", f.ToString())
+	case Duration:
+		field = f.ToDuration()
+	case Bytes:
+		field = f.ToBytes()
+	}
+
+	if f.ZeroFill {
+		field = f.ZeroFilled(f.Precision, f.Scale)
+	}
+
+	return field
+}
+
+// Colorize paints text with the first ColorRule whose condition the Field value
+// satisfies; if none match it uses Color. It returns text unchanged when no
+// color is configured (width is measured separately on the uncolored text so
+// the ANSI codes do not break alignment).
+func (f Field) Colorize(text string) string {
+	attr := f.Color
+	for _, rule := range f.Colors {
+		if f.EvalCondition(rule.Condition) {
+			attr = rule.Color
+			break
+		}
+	}
+
+	if attr == color.Reset {
+		return text
+	}
+
+	return color.New(attrs256(attr)...).Sprint(text)
+}
+
+func attrs256(attr color.Attribute) []color.Attribute {
+	switch attr {
+	case color.FgGreen:
+		return []color.Attribute{38, 5, 34}
+	case color.FgRed:
+		return []color.Attribute{38, 5, 203}
+	case color.FgYellow:
+		return []color.Attribute{38, 5, 208}
+	default:
+		return []color.Attribute{attr}
+	}
 }
