@@ -61,6 +61,7 @@ type table struct {
 	rows       Rows
 	sort       []int
 	sortColumn int
+	sortSet    bool
 	stats      map[int]Stats
 	title      string
 	totals     map[int]bool
@@ -118,6 +119,7 @@ func (t *table) Margin(margin Margin) Table {
 
 func (t *table) SortBy(index int) Table {
 	t.sortColumn = index
+	t.sortSet = true
 	t.SetColumnName(
 		index,
 		fmt.Sprintf("%s%s", t.columns[index].Name, DOWN_ARROW),
@@ -242,8 +244,14 @@ func (t *table) printFooter() {
 	c.Println(t.buildFooter())
 }
 
+// sortRows re-sorts the rows client-side, but only when SortBy was explicitly
+// called. Otherwise the rows keep the order they were Add()-ed in, which for
+// most commands is whatever sort the caller already requested from the
+// server (e.g. "s=store.size:desc" against _cat/*).
 func (t *table) sortRows() {
-	t.rows.SortBy(t.sortColumn)
+	if t.sortSet {
+		t.rows.SortBy(t.sortColumn)
+	}
 }
 
 func (t *table) buildHeader() (p string) {
