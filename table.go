@@ -46,6 +46,8 @@ type Table interface {
 	SortBy(int) Table
 	Sum(int) float64
 	Title(string) Table
+	TitleBold(bool) Table
+	TitleSeparator(bool) Table
 	Total(int) Table
 	Width() int
 	Rows() Rows
@@ -64,6 +66,8 @@ type table struct {
 	sortSet    bool
 	stats      map[int]Stats
 	title      string
+	titleBold  bool
+	titleSep   bool
 	totals     map[int]bool
 	width      int
 	fixedWidth int
@@ -77,12 +81,28 @@ func New() Table {
 	t.totals = map[int]bool{}
 	t.padding = uint(2)
 	t.margin = Margin{}
+	t.titleBold = true
+	t.titleSep = true
 
 	return &t
 }
 
 func (t *table) Title(title string) Table {
 	t.title = title
+	return t
+}
+
+// TitleBold controls whether the title uses a bold terminal style.
+// It is enabled by default.
+func (t *table) TitleBold(enabled bool) Table {
+	t.titleBold = enabled
+	return t
+}
+
+// TitleSeparator controls the horizontal line rendered below the title.
+// It is enabled by default to preserve the standard table layout.
+func (t *table) TitleSeparator(enabled bool) Table {
+	t.titleSep = enabled
 	return t
 }
 
@@ -191,26 +211,37 @@ func (t *table) Rows() Rows {
 }
 
 func (t *table) printTitle() {
-	printTitleLine(t.title, t.width)
-	printTitleSeparator(t.width, t.margin.Left)
+	printTitleLine(t.title, t.width, t.titleBold)
+	if t.titleSep {
+		printTitleSeparator(t.width, t.margin.Left)
+	}
 }
 
 func (t *table) printTitleSpacing() {
-	if t.title != "" {
-		// fmt.Println()
+	if t.title != "" && !t.titleSep {
+		fmt.Println()
 	}
 }
 
 // printTitleLine prints the "─── title ───" header fitted to width. The number
 // of dashes is never negative, even when width is smaller than the title.
-func printTitleLine(title string, width int) {
-	dashes := width - utf8.RuneCountInString(title) - 4
+func printTitleLine(title string, width int, bold bool) {
+	attrs := []color.Attribute{color.FgWhite}
+	if bold {
+		attrs = append(attrs, color.Bold)
+	}
+	c := color.New(attrs...)
+	c.Println(titleLine(title, width))
+}
+
+func titleLine(title string, width int) string {
+	// "━━┫ " before the title and " ┣" after it take six columns.
+	dashes := width - utf8.RuneCountInString(title) - 6
 	if dashes < 0 {
 		dashes = 0
 	}
 
-	c := color.New(color.FgWhite, color.Bold)
-	c.Println("━━", title, strings.Repeat("━", dashes))
+	return "━━┫ " + title + " ┣" + strings.Repeat("━", dashes)
 }
 
 func printTitleSeparator(width, leftMargin int) {

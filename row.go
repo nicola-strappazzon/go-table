@@ -42,7 +42,7 @@ func (r *Row) Print() {
 	labelWidth := r.calculateLabelWidth()
 	width := r.calculateWidth(labelWidth, values)
 
-	printTitleLine(r.title, width)
+	printTitleLine(r.title, width, true)
 	r.printFields(labelWidth, values)
 }
 

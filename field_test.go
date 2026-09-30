@@ -43,11 +43,39 @@ func TestTitleSeparatorRespectsLeftMargin(t *testing.T) {
 	}
 }
 
+func TestTitleLineUsesHeavyJunctions(t *testing.T) {
+	if got, want := titleLine("ETF", 12), "━━┫ ETF ┣━━━"; got != want {
+		t.Errorf("titleLine() = %q, want %q", got, want)
+	}
+}
+
 func TestPaddingWidthNeverNegative(t *testing.T) {
 	tbl := New().(*table)
 	tbl.Padding(2).Margin(Margin{Left: 3})
 
 	if got := tbl.paddingWidth(); got != 0 {
 		t.Errorf("paddingWidth() = %d, want 0", got)
+	}
+}
+
+func TestTitleSeparatorDefaultsToEnabled(t *testing.T) {
+	tbl := New().(*table)
+	if !tbl.titleSep {
+		t.Error("title separator should be enabled by default")
+	}
+	tbl.TitleSeparator(false)
+	if tbl.titleSep {
+		t.Error("TitleSeparator(false) did not disable the separator")
+	}
+}
+
+func TestTitleBoldDefaultsToEnabled(t *testing.T) {
+	tbl := New().(*table)
+	if !tbl.titleBold {
+		t.Error("title bold should be enabled by default")
+	}
+	tbl.TitleBold(false)
+	if tbl.titleBold {
+		t.Error("TitleBold(false) did not disable bold")
 	}
 }
