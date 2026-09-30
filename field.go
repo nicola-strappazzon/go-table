@@ -24,6 +24,8 @@ type Field struct {
 	Colors    []ColorRule     // conditional rules, evaluated in order
 	Precision int
 	Scale     int
+	Signed    bool
+	Suffix    string
 	ZeroFill  bool
 	Alignment Alignment
 }
@@ -143,6 +145,9 @@ func (f Field) EvalCondition(condition string) bool {
 // coloring or aligning.
 func (f Field) Render() string {
 	field := f.ToString()
+	if f.Precision > 0 && !f.ZeroFill {
+		field = fmt.Sprintf("%.*f", f.Precision, f.ToFloat64())
+	}
 
 	switch f.Format {
 	case Percentage:
@@ -156,6 +161,10 @@ func (f Field) Render() string {
 	if f.ZeroFill {
 		field = f.ZeroFilled(f.Precision, f.Scale)
 	}
+	if f.Signed && f.ToFloat64() > 0 {
+		field = "+" + field
+	}
+	field += f.Suffix
 
 	return field
 }

@@ -192,7 +192,7 @@ func (t *table) Rows() Rows {
 
 func (t *table) printTitle() {
 	printTitleLine(t.title, t.width)
-	printTitleSeparator(t.width)
+	printTitleSeparator(t.width, t.margin.Left)
 }
 
 func (t *table) printTitleSpacing() {
@@ -213,11 +213,21 @@ func printTitleLine(title string, width int) {
 	c.Println("━━", title, strings.Repeat("━", dashes))
 }
 
-func printTitleSeparator(width int) {
+func printTitleSeparator(width, leftMargin int) {
+	color.New(color.FgWhite, color.Bold).Println(titleSeparator(width, leftMargin))
+}
+
+func titleSeparator(width, leftMargin int) string {
 	if width < 2 {
 		width = 2
 	}
-	color.New(color.FgWhite, color.Bold).Println(strings.Repeat(" ", 2) + strings.Repeat("─", width-2))
+	if leftMargin < 0 {
+		leftMargin = 0
+	}
+	if leftMargin > width {
+		leftMargin = width
+	}
+	return strings.Repeat(" ", leftMargin) + strings.Repeat("─", width-leftMargin)
 }
 
 func (t *table) printHeader() {
@@ -428,5 +438,16 @@ func (t *table) lenOffset(s string, w int) string {
 }
 
 func (t *table) printPadding() string {
-	return strings.Repeat(" ", int(t.padding)-t.margin.Left)
+	return strings.Repeat(" ", t.paddingWidth())
+}
+
+// paddingWidth returns the inter-column padding after accounting for the left
+// margin. A margin larger than the configured padding must never produce a
+// negative count for strings.Repeat.
+func (t *table) paddingWidth() int {
+	width := int(t.padding) - t.margin.Left
+	if width < 0 {
+		return 0
+	}
+	return width
 }

@@ -32,6 +32,8 @@ type Column struct {
 	Name      string
 	Precision int
 	Scale     int
+	Signed    bool   // prefixes positive numeric values with a plus sign
+	Suffix    string // appended after the rendered value, e.g. "%"
 	Truncate  int
 	Width     int
 	ZeroFill  bool
@@ -56,6 +58,8 @@ func (c Column) toField(value any) Field {
 		Colors:    c.Colors,
 		Precision: c.Precision,
 		Scale:     c.Scale,
+		Signed:    c.Signed,
+		Suffix:    c.Suffix,
 		ZeroFill:  c.ZeroFill,
 		Alignment: c.Alignment,
 	}
