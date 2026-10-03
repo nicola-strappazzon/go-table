@@ -49,12 +49,12 @@ func TestTitleLineUsesHeavyJunctions(t *testing.T) {
 	}
 }
 
-func TestPaddingWidthNeverNegative(t *testing.T) {
+func TestPaddingWidthIsIndependentFromMargin(t *testing.T) {
 	tbl := New().(*table)
 	tbl.Padding(2).Margin(Margin{Left: 3})
 
-	if got := tbl.paddingWidth(); got != 0 {
-		t.Errorf("paddingWidth() = %d, want 0", got)
+	if got := tbl.paddingWidth(); got != 2 {
+		t.Errorf("paddingWidth() = %d, want 2", got)
 	}
 }
 
@@ -77,5 +77,34 @@ func TestTitleBoldDefaultsToEnabled(t *testing.T) {
 	tbl.TitleBold(false)
 	if tbl.titleBold {
 		t.Error("TitleBold(false) did not disable bold")
+	}
+}
+
+func TestCalculateColumnLenUsesRenderedValue(t *testing.T) {
+	tbl := New().(*table)
+	tbl.Add(int64(13_656_110_304), int64(355*1024*1024*1024))
+	tbl.Column(0, Column{Alignment: Right})
+	tbl.Column(1, Column{Format: Bytes, Alignment: Right})
+
+	tbl.calculateColumnStats()
+
+	if got, want := tbl.stats[0].Len, len("13656110304"); got != want {
+		t.Errorf("plain numeric width = %d, want %d", got, want)
+	}
+	if got, want := tbl.stats[1].Len, len("355 GiB"); got != want {
+		t.Errorf("formatted width = %d, want %d", got, want)
+	}
+}
+
+func TestBuildRowKeepsPaddingWithLeftMargin(t *testing.T) {
+	tbl := New().(*table)
+	tbl.Add(int64(13_656_110_304), int64(508*1024*1024*1024))
+	tbl.Column(0, Column{Alignment: Right})
+	tbl.Column(1, Column{Format: Bytes, Alignment: Right})
+	tbl.Margin(Margin{Left: 2}).Padding(2)
+	tbl.calculateColumnStats()
+
+	if got, want := tbl.buildRow(0, tbl.rows[0]), "  13656110304  508 GiB"; got != want {
+		t.Errorf("buildRow() = %q, want %q", got, want)
 	}
 }

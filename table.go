@@ -296,11 +296,12 @@ func (t *table) sortRows() {
 }
 
 func (t *table) buildHeader() (p string) {
+	p = strings.Repeat(" ", t.margin.Left)
 	for i := 0; i < len(t.columns); i++ {
 		if t.columns[i].Alignment == Right {
 			p = p + t.lenOffset(t.columns[i].Name, t.stats[i].Len) + t.columns[i].Name + t.printPadding()
 		} else {
-			p = p + strings.Repeat(" ", t.margin.Left) + t.columns[i].Name + t.lenOffset(t.columns[i].Name, t.stats[i].Len) + t.printPadding()
+			p = p + t.columns[i].Name + t.lenOffset(t.columns[i].Name, t.stats[i].Len) + t.printPadding()
 		}
 	}
 	return p
@@ -315,6 +316,9 @@ func (t *table) buildRow(rowIndex int, row Row) (p string) {
 
 func (t *table) buildFooter() (p string) {
 	for i := 0; i < len(t.columns); i++ {
+		if i == 0 {
+			p += strings.Repeat(" ", t.margin.Left)
+		}
 		p = p + t.buildFooterColumn(i)
 	}
 	return strings.TrimRight(p, " ")
@@ -330,11 +334,16 @@ func (t *table) buildColumn(rowIndex, columnIndex int, columnValue Field) string
 
 	colored := pf.Colorize(field)
 
-	if pf.Alignment == Right {
-		return t.lenOffset(field, t.stats[columnIndex].Len) + colored + t.printPadding()
+	prefix := ""
+	if columnIndex == 0 {
+		prefix = strings.Repeat(" ", t.margin.Left)
 	}
 
-	return strings.Repeat(" ", t.margin.Left) + colored + t.lenOffset(field, t.stats[columnIndex].Len) + t.printPadding()
+	if pf.Alignment == Right {
+		return prefix + t.lenOffset(field, t.stats[columnIndex].Len) + colored + t.printPadding()
+	}
+
+	return prefix + colored + t.lenOffset(field, t.stats[columnIndex].Len) + t.printPadding()
 }
 
 func (t *table) buildFooterColumn(columnIndex int) string {
@@ -442,7 +451,8 @@ func (t *table) calculateColumnSum(index int) (sum float64) {
 
 func (t *table) calculateColumnLen(index int, value int) int {
 	for x := 0; x < len(t.rows); x++ {
-		value = int(math.Max(float64(value), float64(t.rows[x].Fields[index].Len())))
+		field := t.columns[index].toField(t.rows[x].Fields[index].Value).Render()
+		value = int(math.Max(float64(value), float64(utf8.RuneCountInString(field))))
 	}
 
 	return value
@@ -454,6 +464,7 @@ func (t *table) calculateTableWidth() {
 		return
 	}
 
+	t.width = t.margin.Left
 	for _, stats := range t.stats {
 		t.width = t.width + stats.Len + int(t.padding)
 	}
@@ -472,13 +483,8 @@ func (t *table) printPadding() string {
 	return strings.Repeat(" ", t.paddingWidth())
 }
 
-// paddingWidth returns the inter-column padding after accounting for the left
-// margin. A margin larger than the configured padding must never produce a
-// negative count for strings.Repeat.
+// paddingWidth returns the configured spacing between columns. The left margin
+// is an outer indentation and must not reduce the space between columns.
 func (t *table) paddingWidth() int {
-	width := int(t.padding) - t.margin.Left
-	if width < 0 {
-		return 0
-	}
-	return width
+	return int(t.padding)
 }
