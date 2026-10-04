@@ -23,6 +23,11 @@ func TestFieldRenderNumericPresentation(t *testing.T) {
 			field: Field{Value: 0.0, Precision: 2, Signed: true},
 			want:  "0.00",
 		},
+		{
+			name:  "percentage keeps precision",
+			field: Field{Value: 0.424, Format: Percentage, Precision: 2},
+			want:  "0.42%",
+		},
 	}
 
 	for _, tt := range tests {

@@ -151,7 +151,7 @@ func (f Field) Render() string {
 
 	switch f.Format {
 	case Percentage:
-		field = fmt.Sprintf("%s%%", f.ToString())
+		field += "%"
 	case Duration:
 		field = f.ToDuration()
 	case Bytes:
