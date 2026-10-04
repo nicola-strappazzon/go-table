@@ -108,3 +108,20 @@ func TestBuildRowKeepsPaddingWithLeftMargin(t *testing.T) {
 		t.Errorf("buildRow() = %q, want %q", got, want)
 	}
 }
+
+func TestFitWidthTruncatesConfiguredColumns(t *testing.T) {
+	tbl := New().(*table)
+	tbl.Add("a very long table name", "a very long index definition")
+	tbl.Column(0, Column{Name: "TABLE", MaxWidth: 12})
+	tbl.Column(1, Column{Name: "COLUMNS", MaxWidth: 14})
+	tbl.Margin(Margin{Left: 2}).Padding(2).FitWidth(30)
+	tbl.calculateColumnStats()
+	tbl.fitColumns()
+
+	if got, want := tbl.buildRow(0, tbl.rows[0]), "  a very lo...  a very lo..."; got != want {
+		t.Errorf("buildRow() = %q, want %q", got, want)
+	}
+	if got, want := tbl.naturalWidth(), 30; got != want {
+		t.Errorf("naturalWidth() = %d, want %d", got, want)
+	}
+}

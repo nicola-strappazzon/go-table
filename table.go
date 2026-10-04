@@ -36,6 +36,7 @@ type Table interface {
 	Column(int, Column) Table
 	Count() int
 	FilterBy(int, string) Table
+	FitWidth(int) Table
 	Filtered() int
 	Margin(Margin) Table
 	Max(int) float64
@@ -71,6 +72,7 @@ type table struct {
 	totals     map[int]bool
 	width      int
 	fixedWidth int
+	fitWidth   int
 }
 
 func New() Table {
@@ -164,6 +166,7 @@ func (t *table) Print() {
 	t.clearColumnsValues()
 	t.filterRows()
 	t.calculateColumnStats()
+	t.fitColumns()
 	t.calculateTableWidth()
 	t.printTitle()
 	t.printTitleSpacing()
@@ -203,6 +206,14 @@ func (t *table) Width() int {
 // content, rows will extend past the decorative lines.
 func (t *table) SetWidth(w int) Table {
 	t.fixedWidth = w
+	return t
+}
+
+// FitWidth limits the rendered columns to w cells. Columns with MaxWidth set
+// are shortened with an ellipsis as needed; columns without it stay intact.
+// Pass 0 to use each column's natural width.
+func (t *table) FitWidth(w int) Table {
+	t.fitWidth = w
 	return t
 }
 
@@ -331,6 +342,7 @@ func (t *table) buildColumn(rowIndex, columnIndex int, columnValue Field) string
 	if rowIndex >= 0 {
 		field = pf.Render()
 	}
+	field = truncateRendered(field, t.stats[columnIndex].Len, t.columns[columnIndex].MaxWidth > 0)
 
 	colored := pf.Colorize(field)
 
@@ -456,6 +468,61 @@ func (t *table) calculateColumnLen(index int, value int) int {
 	}
 
 	return value
+}
+
+func (t *table) fitColumns() {
+	for index, column := range t.columns {
+		if column.MaxWidth > 0 && t.stats[index].Len > column.MaxWidth {
+			stats := t.stats[index]
+			stats.Len = max(column.MaxWidth, utf8.RuneCountInString(column.Name))
+			t.stats[index] = stats
+		}
+	}
+
+	if t.fitWidth <= 0 {
+		return
+	}
+
+	for t.naturalWidth() > t.fitWidth {
+		index := t.widestTruncatableColumn()
+		if index < 0 {
+			return
+		}
+		stats := t.stats[index]
+		stats.Len--
+		t.stats[index] = stats
+	}
+}
+
+func (t *table) naturalWidth() int {
+	width := t.margin.Left
+	for _, stats := range t.stats {
+		width += stats.Len + int(t.padding)
+	}
+	return width
+}
+
+func (t *table) widestTruncatableColumn() int {
+	index := -1
+	for i, column := range t.columns {
+		if column.MaxWidth <= 0 || t.stats[i].Len <= utf8.RuneCountInString(column.Name) {
+			continue
+		}
+		if index < 0 || t.stats[i].Len > t.stats[index].Len {
+			index = i
+		}
+	}
+	return index
+}
+
+func truncateRendered(s string, width int, ellipsis bool) string {
+	if !ellipsis || utf8.RuneCountInString(s) <= width {
+		return s
+	}
+	if width <= 3 {
+		return strings.Repeat(".", width)
+	}
+	return string([]rune(s)[:width-3]) + "..."
 }
 
 func (t *table) calculateTableWidth() {

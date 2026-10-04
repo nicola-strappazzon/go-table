@@ -30,6 +30,9 @@ type Column struct {
 	Colors    []ColorRule     // conditional rules, evaluated in order
 	Format    Format          // value presentation format
 	Name      string
+	// MaxWidth limits a column's rendered width. Values that do not fit are
+	// shortened with an ellipsis when the table is fitted to a width.
+	MaxWidth  int
 	Precision int
 	Scale     int
 	Signed    bool   // prefixes positive numeric values with a plus sign
